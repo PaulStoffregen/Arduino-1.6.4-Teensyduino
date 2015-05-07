@@ -46,6 +46,8 @@ public class BaseNoGui {
   static private File examplesFolder;
   static private File toolsFolder;
 
+  static String teensyduino_version = null;
+
   // maps #included files to their library folder
   public static Map<String, LibraryList> importToLibraryTable;
 
@@ -167,6 +169,25 @@ public class BaseNoGui {
     }
     prefs.put("name", extendedName);
     return prefs;
+  }
+
+  static public boolean isTeensyduino() {
+    TargetPlatform targetPlatform = getTargetPlatform();
+    if (targetPlatform == null) return false;
+    TargetPackage targetPackage = targetPlatform.getContainerPackage();
+    if (targetPackage == null) return false;
+    String s = targetPackage.getId();
+    if (s == null) return false;
+    if (!s.equalsIgnoreCase("teensy")) return false;
+    TargetBoard board = getTargetBoard();
+    if (board == null) return false;
+    s = board.getId();
+    if (s == null) return false;
+    if (!s.startsWith("teensy")) return false;
+    s = board.getName();
+    if (s == null) return false;
+    if (!s.startsWith("Teensy")) return false;
+    return true;
   }
 
   static public File getContentFile(String name) {
@@ -613,6 +634,15 @@ public class BaseNoGui {
     loadHardware(getHardwareFolder());
     loadHardware(getSketchbookHardwareFolder());
     loadContributedHardware(indexer);
+    TargetPackage t = packages.get("teensy");
+    if (t != null) {
+      Map<String, TargetPackage> list = new LinkedHashMap<String, TargetPackage>();
+      list.put(t.getId(), t);
+      for (TargetPackage p : packages.values()) {
+        if (p != t) list.put(p.getId(), p);
+      }
+      packages = list;
+    }
     createToolPreferences(indexer);
 
     librariesIndexer = new LibrariesIndexer(BaseNoGui.getSettingsFolder());
@@ -673,6 +703,14 @@ public class BaseNoGui {
     // help 3rd party installers find the correct hardware path
     PreferencesData.set("last.ide." + VERSION_NAME + ".hardwarepath", getHardwarePath());
     PreferencesData.set("last.ide." + VERSION_NAME + ".daterun", "" + (new Date()).getTime() / 1000);
+    try {
+      File versionFile = getContentFile("lib/teensyduino.txt");
+      if (versionFile.exists()) {
+        teensyduino_version = PApplet.loadStrings(versionFile)[0];
+      }
+    } catch (Exception e) {
+      teensyduino_version = null;
+    }
   }
 
   /**

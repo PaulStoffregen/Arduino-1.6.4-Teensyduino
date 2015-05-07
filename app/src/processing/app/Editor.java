@@ -1020,6 +1020,15 @@ public class Editor extends JFrame implements RunnerListener {
   protected void populatePortMenu() {
     serialMenu.removeAll();
 
+    if (BaseNoGui.isTeensyduino()) {
+      if (BaseNoGui.getBoardPreferences().get("fake_serial") != null) {
+        serialMenu.setEnabled(false);
+        serialMenu.setText("Port (emulated serial)");
+        return;
+      }
+    }
+    serialMenu.setText("Port");
+
     String selectedPort = PreferencesData.get("serial.port");
 
     List<BoardPort> ports = Base.getDiscoveryManager().discovery();
@@ -2479,7 +2488,7 @@ public class Editor extends JFrame implements RunnerListener {
       try {
         if (serialMonitor != null) {
           serialMonitor.close();
-          serialMonitor.setVisible(false);
+          if (!BaseNoGui.isTeensyduino()) serialMonitor.setVisible(false);
         }
 
         uploading = true;
@@ -2511,6 +2520,7 @@ public class Editor extends JFrame implements RunnerListener {
       uploading = false;
       //toolbar.clear();
       toolbar.deactivate(EditorToolbar.EXPORT);
+      if (BaseNoGui.isTeensyduino() && serialMonitor != null) serialMonitor.reopen();
     }
   }
 
@@ -2521,7 +2531,7 @@ public class Editor extends JFrame implements RunnerListener {
       try {
         if (serialMonitor != null) {
           serialMonitor.close();
-          serialMonitor.setVisible(false);
+          if (!BaseNoGui.isTeensyduino()) serialMonitor.setVisible(false);
         }
 
         uploading = true;
@@ -2553,6 +2563,7 @@ public class Editor extends JFrame implements RunnerListener {
       uploading = false;
       //toolbar.clear();
       toolbar.deactivate(EditorToolbar.EXPORT);
+      if (BaseNoGui.isTeensyduino() && serialMonitor != null) serialMonitor.reopen();
     }
   }
 
@@ -2605,6 +2616,12 @@ public class Editor extends JFrame implements RunnerListener {
 
     BoardPort port = Base.getDiscoveryManager().find(PreferencesData.get("serial.port"));
 
+    if (BaseNoGui.isTeensyduino() && BaseNoGui.getBoardPreferences().get("fake_serial") != null) {
+      port = new BoardPort();
+      port.setAddress("fake serial");
+      port.setProtocol("serial");
+      port.setLabel("Emulated Serial");
+    }
     if (port == null) {
       statusError(I18n.format("Board at {0} is not available", PreferencesData.get("serial.port")));
       return;

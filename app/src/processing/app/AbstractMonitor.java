@@ -32,6 +32,7 @@ import javax.swing.text.DefaultCaret;
 
 import processing.app.debug.TextAreaFIFO;
 import processing.app.legacy.PApplet;
+import processing.app.helpers.OSUtils;
 
 @SuppressWarnings("serial")
 public abstract class AbstractMonitor extends JFrame implements ActionListener {
@@ -44,6 +45,8 @@ public abstract class AbstractMonitor extends JFrame implements ActionListener {
   protected JCheckBox autoscrollBox;
   protected JComboBox lineEndings;
   protected JComboBox serialRates;
+  protected Thread reopener;
+  protected Boolean isOpen;
 
   private Timer updateTimer;
   private StringBuffer updateBuffer;
@@ -225,6 +228,64 @@ public abstract class AbstractMonitor extends JFrame implements ActionListener {
   }
 
   public abstract void open() throws Exception;
+  //public abstract void reopen();
+  public void reopen() {
+    if (!isVisible()) return;
+    if (isOpen) return;
+    if (reopener != null && reopener.isAlive()) return;
+    reopener = new Thread() {
+      public void run() {
+        int initial_delay = 800;
+        // trying too early on Windows risks triggering a horrible
+        // Windows driver bug, so be extra careful on Windows
+        if (OSUtils.isWindows()) initial_delay += 1000;
+        try {
+          sleep(initial_delay);
+        } catch (InterruptedException e) {
+          return;
+        }
+        int attempt = 0;
+        while (true) {  // keep trying as long as the window is visible
+          attempt++;
+          try {
+            sleep((attempt < 50) ? 100 : 500);
+          } catch (InterruptedException e) {
+            return;
+          }
+          try {
+            open();
+            isOpen = true;
+            return;
+          } catch (Exception e) {
+            // open throws exception if unable to open
+          }
+        }
+      }
+    };
+    reopener.start();
+  }
+  protected void reopen_abort() {
+    if (reopener == null) return;
+    reopener.interrupt();
+    int attempt = 0;
+    while (attempt++ < 25) {  // keep trying for approx 1/4 second
+      if (!reopener.isAlive()) break;
+      try {
+        Thread.sleep(10);
+      } catch (InterruptedException e) {
+      }
+    }
+  }
+
+  public void enableWindow(boolean enable) {
+    textArea.setEnabled(enable);
+    scrollPane.setEnabled(enable);
+    textField.setEnabled(enable);
+    sendButton.setEnabled(enable);
+    autoscrollBox.setEnabled(enable);
+    lineEndings.setEnabled(enable);
+    serialRates.setEnabled(enable);
+  }
 
   public abstract void close() throws Exception;
   

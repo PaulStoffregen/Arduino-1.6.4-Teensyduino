@@ -34,6 +34,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.SortedSet;
 import java.util.TreeSet;
+import java.util.Date;
+import java.util.GregorianCalendar;
 
 import cc.arduino.packages.BoardPort;
 import cc.arduino.packages.Uploader;
@@ -277,7 +279,7 @@ public class Compiler implements MessageConsumer {
       if (tempBuildFolder.exists()) {
         String files[] = tempBuildFolder.list();
         for (String file : files) {
-          if (file.endsWith(".c") || file.endsWith(".cpp") || file.endsWith(".s")) {
+          if (file.endsWith(".c") || file.endsWith(".cpp") || file.endsWith(".S")) {
             File deleteMe = new File(tempBuildFolder, file);
             if (!deleteMe.delete()) {
               System.err.println("Could not delete " + deleteMe);
@@ -371,7 +373,7 @@ public class Compiler implements MessageConsumer {
       if (verbose) {
         String legacy = "";
         if (lib instanceof LegacyUserLibrary)
-          legacy = "(legacy)";
+          legacy = "(1.0.x format)";
         System.out.println(I18n
             .format(_("Using library {0} in folder: {1} {2}"), lib.getName(),
                     lib.getInstalledFolder(), legacy));
@@ -416,6 +418,10 @@ public class Compiler implements MessageConsumer {
     // 4. link it all together into the .elf file
     progressListener.progress(60);
     compileLink();
+    if (prefs.get("build.elfpatch") != null) {
+      System.out.println("ELF Patch Step");
+      runRecipe("recipe.elfpatch.pattern");
+    }
 
     // 5. run objcopy to generate output files
     progressListener.progress(75);
@@ -541,6 +547,17 @@ public class Compiler implements MessageConsumer {
     } else {
       p.put("build.variant.path", "");
     }
+
+    // Build Time
+    Date d = new Date();
+    GregorianCalendar cal = new GregorianCalendar();
+    long current = d.getTime()/1000;
+    long timezone = cal.get(cal.ZONE_OFFSET)/1000;
+    long daylight = cal.get(cal.DST_OFFSET)/1000;
+    p.put("extra.time.utc", Long.toString(current));
+    p.put("extra.time.local", Long.toString(current + timezone + daylight));
+    p.put("extra.time.zone", Long.toString(timezone));
+    p.put("extra.time.dst", Long.toString(daylight));
     
     return p;
   }
@@ -555,7 +572,10 @@ public class Compiler implements MessageConsumer {
 
     for (File file : sSources) {
       File objectFile = new File(outputPath, file.getName() + ".o");
+      File dependFile = new File(outputPath, file.getName() + ".d");
       objectPaths.add(objectFile);
+      if (isAlreadyCompiled(file, objectFile, dependFile, prefs))
+        continue;
       String[] cmd = getCommandCompilerByRecipe(includeFolders, file, objectFile, "recipe.S.o.pattern");
       execAsynchronously(cmd);
     }
@@ -770,6 +790,8 @@ public class Compiler implements MessageConsumer {
   public void message(String s) {
     int i;
 
+    if (BaseNoGui.isTeensyduino()) { message_Teensy(s); return; }
+
     // remove the build path so people only see the filename
     // can't use replaceAll() because the path may have characters in it which
     // have meaning in a regular expression.
@@ -880,8 +902,72 @@ public class Compiler implements MessageConsumer {
       String error = _("Please import the Wire library from the Sketch > Import Library menu.");
       exception = new RunnerException(error);
     }
-		
+
     System.err.print(s);
+  }
+
+  private void message_Teensy(String s) {
+    s = s.trim();
+    //System.out.println("Original message: " + s);
+    String advice = null;
+    String[] pieces = PApplet.match(s, "(\\w+\\.\\w+):(\\d+):\\d+:\\s*error:\\s*(.+)");
+    if (pieces != null) {
+      if (!sketchIsCompiled) {
+        // Place errors when compiling the sketch, but never while compiling libraries
+        // or the core.  The user's sketch might contain the same filename!
+        RunnerException e;
+        e = placeException(pieces[3], pieces[1], PApplet.parseInt(pieces[2]) - 1);
+        if (e != null) {
+          if (!verbose) {
+            SketchCode code = sketch.getCode(e.getCodeIndex());
+            String fileName = (code.isExtension("ino") || code.isExtension("pde")) ?
+              code.getPrettyName() : code.getFileName();
+            int lineNum = e.getCodeLine() + 1;
+            s = fileName + ":" + lineNum + ": error: " + pieces[3];
+            //System.out.println("friendly message: " + s);
+          }
+          e.hideStackTrace();
+          exception = e;
+        }
+        advice = message_advice_Teensy(pieces[3].trim());
+      }
+    }
+    System.err.print(s + "\n");
+    if (advice != null) System.err.print(advice + "\n");
+  }
+
+  private String message_advice_Teensy(String s) {
+    if (s.equals("'Keyboard' was not declared in this scope")) {
+      return "To make a USB Keyboard, use the Tools > USB Type menu";
+    }
+    if (s.equals("'Mouse' was not declared in this scope")) {
+      return "To make a USB Mouse, use the Tools > USB Type menu";
+    }
+    if (s.equals("'Joystick' was not declared in this scope")) {
+      return "To make a USB Joystick, use the Tools > USB Type menu";
+    }
+    if (s.equals("'Disk' was not declared in this scope")) {
+      return "To make a USB Disk, use the Tools > USB Type menu";
+    }
+    if (s.equals("'usbMIDI' was not declared in this scope")) {
+      return "To make a USB MIDI device, use the Tools > USB Type menu";
+    }
+    if (s.equals("'RawHID' was not declared in this scope")) {
+      return "To make a USB RawHID device, use the Tools > USB Type menu";
+    }
+    if (s.equals("'FlightSimCommand' was not declared in this scope")) {
+      return "To make a Flight Simulator device, use the Tools > USB Type menu";
+    }
+    if (s.equals("'FlightSimInteger' was not declared in this scope")) {
+      return "To make a Flight Simulator device, use the Tools > USB Type menu";
+    }
+    if (s.equals("'FlightSimFloat' was not declared in this scope")) {
+      return "To make a Flight Simulator device, use the Tools > USB Type menu";
+    }
+    if (s.equals("'FlightSim' was not declared in this scope")) {
+      return "To make a Flight Simulator device, use the Tools > USB Type menu";
+    }
+    return null;
   }
 
   private String[] getCommandCompilerByRecipe(List<File> includeFolders, File sourceFile, File objectFile, String recipe) throws PreferencesMapException, RunnerException {
@@ -1134,6 +1220,7 @@ public class Compiler implements MessageConsumer {
   void runRecipe(String recipe) throws RunnerException, PreferencesMapException {
     PreferencesMap dict = new PreferencesMap(prefs);
     dict.put("ide_version", "" + BaseNoGui.REVISION);
+    dict.put("sketch_path", sketch.getFolder().getAbsolutePath());
 
     String[] cmdArray;
     String cmd = prefs.getOrExcept(recipe);
@@ -1262,13 +1349,17 @@ public class Compiler implements MessageConsumer {
     // 3. then loop over the code[] and save each .java file
 
     for (SketchCode sc : sketch.getCodes()) {
-      if (sc.isExtension("c") || sc.isExtension("cpp") || sc.isExtension("h")) {
+      if (sc.isExtension("c") || sc.isExtension("cpp") || sc.isExtension("h") || sc.isExtension("s")) {
         // no pre-processing services necessary for java files
         // just write the the contents of 'program' to a .java file
         // into the build directory. uses byte stream and reader/writer
         // shtuff so that unicode bunk is properly handled
         String filename = sc.getFileName(); //code[i].name + ".java";
         try {
+          if (filename.endsWith(".s")) {
+            // assembly files must be named with capital ".S"
+            filename = filename.substring(0, filename.length()-1) + "S";
+          }
           BaseNoGui.saveFile(sc.getProgram(), new File(buildPath, filename));
         } catch (IOException e) {
           e.printStackTrace();

@@ -978,14 +978,14 @@ public class Base {
         }
       }
 
-      // This will store the sketch count as zero
-      editors.remove(editor);
       try {
         Editor.serialMonitor.close();
       } catch (Exception e) {
         //ignore
       }
       storeSketches();
+      // This will store the sketch count as zero
+      editors.remove(editor);
 
       // Save out the current prefs state
       PreferencesData.save();
@@ -1745,9 +1745,16 @@ public class Base {
         g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
                 RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
 
-        g.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        Font f = new Font("SansSerif", Font.PLAIN, 11);
+        g.setFont(f);
         g.setColor(Color.white);
         g.drawString(BaseNoGui.VERSION_NAME, 33, 20);
+        if (BaseNoGui.teensyduino_version != null) {
+          FontMetrics m = g.getFontMetrics(f);
+          g.drawString("Teensyduino", 285 - m.stringWidth("Teensyduino") / 2, 30);
+          g.drawString(BaseNoGui.teensyduino_version,
+            285 - m.stringWidth(BaseNoGui.teensyduino_version) / 2, 46);
+        }
       }
     };
     window.addMouseListener(new MouseAdapter() {
